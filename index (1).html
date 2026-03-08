@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lumen — AI PDF Reader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink: #0f0e0c;
+      --paper: #faf8f3;
+      --cream: #f2ede3;
+      --gold: #c9a84c;
+      --gold-light: #e8d49a;
+      --rust: #b85c38;
+      --sage: #5a7a5e;
+      --text-muted: #7a756b;
+      --border: #ddd8ce;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── GRAIN OVERLAY ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 9999; opacity: 0.5;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.4rem 3rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--paper);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem; font-weight: 900; letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+    .logo span { color: var(--gold); }
+    .header-tag {
+      font-size: 0.72rem; font-weight: 500; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--text-muted);
+      border: 1px solid var(--border); padding: 0.3rem 0.8rem;
+      border-radius: 2rem;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      text-align: center;
+      padding: 5rem 2rem 3rem;
+      max-width: 720px; margin: 0 auto;
+    }
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.7rem; font-weight: 500; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--gold);
+      margin-bottom: 1.4rem;
+    }
+    .hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 6vw, 3.8rem);
+      font-weight: 900; line-height: 1.1;
+      letter-spacing: -0.03em; margin-bottom: 1.2rem;
+    }
+    .hero h1 em { font-style: italic; color: var(--rust); }
+    .hero p {
+      font-size: 1.05rem; line-height: 1.75;
+      color: var(--text-muted); max-width: 520px; margin: 0 auto;
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      display: flex; align-items: center; gap: 1rem;
+      max-width: 720px; margin: 2rem auto;
+      padding: 0 2rem;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1;
+      height: 1px; background: var(--border);
+    }
+    .divider span {
+      font-size: 0.65rem; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--text-muted);
+    }
+
+    /* ── MAIN CARD ── */
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 1.2rem;
+      padding: 2.4rem;
+      max-width: 720px; margin: 0 auto 2rem;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.05);
+      transition: box-shadow 0.3s;
+    }
+    .card:hover { box-shadow: 0 8px 60px rgba(0,0,0,0.09); }
+
+    /* ── UPLOAD ZONE ── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 0.8rem;
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s;
+      position: relative;
+      background: var(--cream);
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--gold);
+      background: #fdf8ee;
+    }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%;
+    }
+    .upload-icon {
+      width: 52px; height: 52px; margin: 0 auto 1rem;
+      background: var(--gold-light);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .upload-icon svg { width: 24px; height: 24px; color: var(--gold); }
+    .upload-zone h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem; font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+    .upload-zone p { font-size: 0.85rem; color: var(--text-muted); }
+    .upload-zone .file-name {
+      margin-top: 0.8rem;
+      font-size: 0.85rem; color: var(--sage); font-weight: 500;
+    }
+
+    /* ── MODE SELECTOR ── */
+    .section-label {
+      font-size: 0.7rem; font-weight: 500; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--text-muted);
+      margin: 1.6rem 0 0.8rem;
+    }
+    .mode-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
+    }
+    .mode-btn {
+      border: 1.5px solid var(--border);
+      border-radius: 0.8rem; padding: 1rem 0.8rem;
+      text-align: center; cursor: pointer;
+      transition: all 0.2s; background: var(--paper);
+      user-select: none;
+    }
+    .mode-btn:hover { border-color: var(--gold); background: #fdf8ee; }
+    .mode-btn.active {
+      border-color: var(--gold);
+      background: linear-gradient(135deg, #fdf8ee, #faf2d8);
+      box-shadow: 0 0 0 3px rgba(201,168,76,0.15);
+    }
+    .mode-btn .mode-icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+    .mode-btn .mode-title {
+      font-weight: 600; font-size: 0.88rem; margin-bottom: 0.2rem;
+    }
+    .mode-btn .mode-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
+
+    /* ── SUBMIT BUTTON ── */
+    .submit-btn {
+      width: 100%; margin-top: 1.6rem;
+      padding: 1rem 2rem;
+      background: var(--ink);
+      color: var(--paper);
+      border: none; border-radius: 0.8rem;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem; font-weight: 500;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.25s;
+      display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+    }
+    .submit-btn:hover:not(:disabled) {
+      background: #1e1c17;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    }
+    .submit-btn:disabled {
+      opacity: 0.45; cursor: not-allowed; transform: none;
+    }
+
+    /* ── PROGRESS ── */
+    .progress-wrap {
+      display: none; margin-top: 1.6rem;
+    }
+    .progress-wrap.visible { display: block; }
+    .progress-bar-track {
+      height: 4px; background: var(--cream);
+      border-radius: 4px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: linear-gradient(90deg, var(--gold), var(--rust));
+      border-radius: 4px;
+      animation: indeterminate 1.4s ease-in-out infinite;
+      width: 40%;
+    }
+    @keyframes indeterminate {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+    .progress-label {
+      font-size: 0.78rem; color: var(--text-muted);
+      margin-top: 0.6rem; text-align: center;
+    }
+
+    /* ── RESULT AREA ── */
+    .result-section {
+      max-width: 720px; margin: 0 auto 4rem;
+      display: none;
+    }
+    .result-section.visible { display: block; }
+    .result-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .result-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.3rem; font-weight: 700;
+    }
+    .result-badge {
+      font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+      background: #e8f4eb; color: var(--sage);
+      padding: 0.3rem 0.8rem; border-radius: 2rem; font-weight: 500;
+    }
+    .result-box {
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 1rem; padding: 2rem;
+      line-height: 1.85; font-size: 0.95rem;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+      white-space: pre-wrap;
+    }
+    .copy-btn {
+      margin-top: 1rem;
+      padding: 0.55rem 1.2rem;
+      border: 1px solid var(--border); border-radius: 0.5rem;
+      background: transparent; cursor: pointer;
+      font-size: 0.8rem; font-family: 'DM Sans', sans-serif;
+      color: var(--text-muted); transition: all 0.2s;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .copy-btn:hover { border-color: var(--gold); color: var(--ink); }
+
+    /* ── ERROR ── */
+    .error-box {
+      background: #fff5f2; border: 1px solid #f5c6b8;
+      border-radius: 0.8rem; padding: 1.2rem 1.5rem;
+      font-size: 0.88rem; color: var(--rust);
+      margin-top: 1rem; display: none;
+    }
+    .error-box.visible { display: block; }
+
+    /* ── HOW IT WORKS ── */
+    .how-section {
+      max-width: 720px; margin: 2rem auto 5rem; padding: 0 2rem;
+    }
+    .how-section h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem;
+    }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+    .step {
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 1rem; padding: 1.4rem;
+    }
+    .step-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem; font-weight: 900; color: var(--gold-light);
+      line-height: 1; margin-bottom: 0.6rem;
+    }
+    .step h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.3rem; }
+    .step p { font-size: 0.8rem; color: var(--text-muted); line-height: 1.55; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      text-align: center; padding: 1.8rem;
+      font-size: 0.78rem; color: var(--text-muted);
+    }
+    footer a { color: var(--gold); text-decoration: none; }
+
+    /* ── SPINNER ── */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      header { padding: 1.2rem 1.5rem; }
+      .card { margin: 0 1rem 2rem; padding: 1.6rem; }
+      .mode-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .how-section { padding: 0 1rem; }
+      .hero { padding: 3rem 1.5rem 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">Lu<span>men</span></div>
+    <div class="header-tag">AI PDF Reader · Free</div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <span class="hero-eyebrow">✦ Powered by Hugging Face AI</span>
+    <h1>Understand any PDF, <em>instantly.</em></h1>
+    <p>Upload a document and let AI distill it into a crisp summary, a plain-English explanation, or both — right in your browser, completely free.</p>
+  </section>
+
+  <div class="divider"><span>Upload your document</span></div>
+
+  <!-- MAIN CARD -->
+  <div class="card" style="margin-left:auto;margin-right:auto;max-width:720px;margin-bottom:0.5rem;" id="main-card">
+
+    <!-- Upload Zone -->
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="pdf-input" accept=".pdf" />
+      <div class="upload-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+      </div>
+      <h3>Drop your PDF here</h3>
+      <p>or click to browse your files</p>
+      <div class="file-name" id="file-name-display"></div>
+    </div>
+
+    <!-- Mode Selector -->
+    <div class="section-label">Choose what you want</div>
+    <div class="mode-grid">
+      <div class="mode-btn active" data-mode="summarize">
+        <div class="mode-icon">📋</div>
+        <div class="mode-title">Summarize</div>
+        <div class="mode-desc">Get a concise overview of the key points</div>
+      </div>
+      <div class="mode-btn" data-mode="explain">
+        <div class="mode-icon">💡</div>
+        <div class="mode-title">Explain</div>
+        <div class="mode-desc">Plain-English breakdown, easy to understand</div>
+      </div>
+      <div class="mode-btn" data-mode="both">
+        <div class="mode-icon">✨</div>
+        <div class="mode-title">Both</div>
+        <div class="mode-desc">Full summary plus a clear explanation</div>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <button class="submit-btn" id="submit-btn" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Analyse Document
+    </button>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-bar-track"><div class="progress-bar-fill"></div></div>
+      <div class="progress-label" id="progress-label">Extracting text from PDF…</div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-box" id="error-box"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="result-section" id="result-section" style="padding:0 1rem;">
+    <div class="result-header">
+      <div class="result-title" id="result-title">Summary</div>
+      <div class="result-badge">✓ Complete</div>
+    </div>
+    <div class="result-box" id="result-box"></div>
+    <button class="copy-btn" id="copy-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy to clipboard
+    </button>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div class="divider" style="margin-top:3rem;"><span>How it works</span></div>
+  <section class="how-section">
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <h4>Upload your PDF</h4>
+        <p>Drag and drop or click to select any PDF — your document stays in your browser, nothing is stored.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <h4>AI reads the text</h4>
+        <p>The text is extracted and sent securely to a free Hugging Face language model for processing.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <h4>Get your result</h4>
+        <p>Your summary or explanation appears instantly — copy it, read it, use it however you need.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    Built with <a href="https://huggingface.co" target="_blank">Hugging Face</a> free inference API ·
+    <a href="https://mozilla.github.io/pdf.js/" target="_blank">PDF.js</a> ·
+    No data stored · 100% free
+  </footer>
+
+  <script>
+    // ── PDF.js setup ──
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // ── State ──
+    let selectedMode = 'summarize';
+    let pdfFile = null;
+
+    // ── DOM refs ──
+    const uploadZone   = document.getElementById('upload-zone');
+    const pdfInput     = document.getElementById('pdf-input');
+    const fileDisplay  = document.getElementById('file-name-display');
+    const submitBtn    = document.getElementById('submit-btn');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressLbl  = document.getElementById('progress-label');
+    const errorBox     = document.getElementById('error-box');
+    const resultSec    = document.getElementById('result-section');
+    const resultTitle  = document.getElementById('result-title');
+    const resultBox    = document.getElementById('result-box');
+    const copyBtn      = document.getElementById('copy-btn');
+    const modeBtns     = document.querySelectorAll('.mode-btn');
+
+    // ── Mode selection ──
+    modeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedMode = btn.dataset.mode;
+      });
+    });
+
+    // ── Drag and drop ──
+    uploadZone.addEventListener('dragover', e => {
+      e.preventDefault(); uploadZone.classList.add('dragover');
+    });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault(); uploadZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type === 'application/pdf') setFile(file);
+    });
+    pdfInput.addEventListener('change', () => {
+      if (pdfInput.files[0]) setFile(pdfInput.files[0]);
+    });
+
+    function setFile(file) {
+      pdfFile = file;
+      fileDisplay.textContent = '📄 ' + file.name;
+      submitBtn.disabled = false;
+      hideError();
+      resultSec.classList.remove('visible');
+    }
+
+    // ── Extract text from PDF ──
+    async function extractTextFromPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map(item => item.str);
+        fullText += strings.join(' ') + '\n';
+      }
+      return fullText.trim();
+    }
+
+    // ── Build prompt ──
+    function buildPrompt(text, mode) {
+      const snippet = text.slice(0, 3000); // Stay within token limits
+      if (mode === 'summarize') {
+        return `Please provide a clear and concise summary of the following document. Focus on the main points and key takeaways.\n\nDocument:\n${snippet}\n\nSummary:`;
+      } else if (mode === 'explain') {
+        return `Please explain the following document in simple, plain English that anyone can understand. Break down any complex concepts.\n\nDocument:\n${snippet}\n\nExplanation:`;
+      } else {
+        return `Please do two things for the following document:\n1. Provide a concise SUMMARY of the main points.\n2. Then provide a clear EXPLANATION in simple plain English.\n\nDocument:\n${snippet}\n\nSummary and Explanation:`;
+      }
+    }
+
+    // ── Call Hugging Face API ──
+    async function callHuggingFace(prompt) {
+      // Using facebook/bart-large-cnn for summarization via HF Inference API (free, no key needed for low usage)
+      // We use the conversational/text-generation endpoint with Mistral-7B (free tier)
+      const response = await fetch(
+        'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inputs: `<s>[INST] ${prompt} [/INST]`,
+            parameters: {
+              max_new_tokens: 600,
+              temperature: 0.4,
+              return_full_text: false,
+              do_sample: true
+            }
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        // If model is loading, tell user
+        if (err.error && err.error.includes('loading')) {
+          throw new Error('The AI model is warming up (this can take ~20 seconds on first use). Please try again in a moment.');
+        }
+        throw new Error(err.error || `API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (Array.isArray(data) && data[0]?.generated_text) {
+        return data[0].generated_text.trim();
+      }
+      if (data.generated_text) return data.generated_text.trim();
+      throw new Error('Unexpected API response format.');
+    }
+
+    // ── Submit handler ──
+    submitBtn.addEventListener('click', async () => {
+      if (!pdfFile) return;
+      hideError();
+      resultSec.classList.remove('visible');
+      setLoading(true, 'Extracting text from PDF…');
+
+      try {
+        const text = await extractTextFromPDF(pdfFile);
+        if (!text || text.length < 80) {
+          throw new Error('Could not extract enough text from this PDF. It may be scanned or image-based — please try a text-based PDF.');
+        }
+
+        setLoading(true, 'Sending to AI model…');
+        const prompt = buildPrompt(text, selectedMode);
+        const result = await callHuggingFace(prompt);
+
+        // Show result
+        const titles = { summarize: 'Summary', explain: 'Explanation', both: 'Summary & Explanation' };
+        resultTitle.textContent = titles[selectedMode] || 'Result';
+        resultBox.textContent = result;
+        resultSec.classList.add('visible');
+        resultSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      } catch (err) {
+        showError(err.message || 'Something went wrong. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // ── Copy ──
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(resultBox.textContent).then(() => {
+        copyBtn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy to clipboard`;
+        }, 2000);
+      });
+    });
+
+    // ── Helpers ──
+    function setLoading(on, label) {
+      submitBtn.disabled = on;
+      progressWrap.classList.toggle('visible', on);
+      if (label) progressLbl.textContent = label;
+      if (on) {
+        submitBtn.innerHTML = `<div class="spinner"></div> Analysing…`;
+      } else {
+        submitBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Analyse Document`;
+        submitBtn.disabled = !pdfFile;
+      }
+    }
+
+    function showError(msg) {
+      errorBox.textContent = '⚠ ' + msg;
+      errorBox.classList.add('visible');
+    }
+    function hideError() {
+      errorBox.classList.remove('visible');
+    }
+  </script>
+</body>
+</html>
