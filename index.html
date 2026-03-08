@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Summarizer AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>📄 PDF Summarizer AI</h1>
+    <p>Upload your PDF and get a summary or explanation.</p>
+
+    <form id="pdfForm">
+        <input type="file" id="pdfFile" accept=".pdf" required>
+        <select id="option">
+            <option value="Summarize">Summarize</option>
+            <option value="Explain">Explain</option>
+            <option value="Both">Both</option>
+        </select>
+        <button type="submit">Submit PDF</button>
+    </form>
+
+    <div id="output"></div>
+</body>
+</html>
